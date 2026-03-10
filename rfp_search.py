@@ -154,12 +154,15 @@ def export_to_excel(df: pd.DataFrame, date_str: str) -> str:
 
 def send_email(excel_path: str, date_str: str, count: int) -> None:
     sender = os.environ.get("EMAIL_FROM", "")
-    recipient = os.environ.get("EMAIL_TO", "")
+    recipients_raw = os.environ.get("EMAIL_TO", "")
     password = os.environ.get("EMAIL_PASSWORD", "")
 
-    if not all([sender, recipient, password]):
+    if not all([sender, recipients_raw, password]):
         print("이메일 설정(EMAIL_FROM/EMAIL_TO/EMAIL_PASSWORD)이 없어 발송 생략.")
         return
+
+    # 쉼표로 구분된 여러 수신자 지원
+    recipients = [r.strip() for r in recipients_raw.split(",") if r.strip()]
 
     display_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
     subject = f"[나라장터] {display_date} 입찰공고 {count}건"
@@ -174,7 +177,7 @@ def send_email(excel_path: str, date_str: str, count: int) -> None:
 
     msg = MIMEMultipart()
     msg["From"] = sender
-    msg["To"] = recipient
+    msg["To"] = ", ".join(recipients)
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "plain", "utf-8"))
 
@@ -187,9 +190,9 @@ def send_email(excel_path: str, date_str: str, count: int) -> None:
         smtp.ehlo()
         smtp.starttls()
         smtp.login(sender, password)
-        smtp.sendmail(sender, recipient, msg.as_string())
+        smtp.sendmail(sender, recipients, msg.as_string())
 
-    print(f"이메일 발송 완료 → {recipient}")
+    print(f"이메일 발송 완료 → {', '.join(recipients)}")
 
 
 def main():
