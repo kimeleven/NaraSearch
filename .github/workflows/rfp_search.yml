@@ -1,0 +1,39 @@
+name: 나라장터 입찰공고 검색
+
+on:
+  schedule:
+    # 매일 오전 9시 KST (= UTC 00:00)
+    - cron: "0 0 * * *"
+  workflow_dispatch:  # 수동 실행 버튼
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 패키지 설치
+        run: pip install -r requirements.txt
+
+      - name: 입찰공고 검색 실행
+        env:
+          NARA_API_KEY: ${{ secrets.NARA_API_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        run: python rfp_search.py
+
+      - name: 엑셀 파일 아티팩트 저장 (30일 보관)
+        uses: actions/upload-artifact@v4
+        with:
+          name: 입찰공고-${{ github.run_id }}
+          path: "입찰공고_*.xlsx"
+          retention-days: 30
+        if: always()
