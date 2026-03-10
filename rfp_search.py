@@ -91,13 +91,19 @@ class BidSearchClient:
 
 
 def filter_records(records: list) -> list:
+    seen = set()
     result = []
     for r in records:
-        task_type = r.get("srvceDivNm", "")
-        if task_type not in config.ALLOWED_TASK_TYPES:
-            continue
         name = r.get("bidNtceNm", "")
-        if any(kw in name for kw in config.KEYWORDS):
+        task_type = r.get("srvceDivNm", "")
+        bid_no = r.get("bidNtceNo", id(r))
+
+        match_a = (task_type in config.ALLOWED_TASK_TYPES
+                   and any(kw in name for kw in config.KEYWORDS))
+        match_b = any(kw.lower() in name.lower() for kw in config.TABLET_KEYWORDS)
+
+        if (match_a or match_b) and bid_no not in seen:
+            seen.add(bid_no)
             result.append(r)
     return result
 
@@ -223,8 +229,9 @@ def main():
     filtered = filter_records(raw_records)
     print(
         f"필터링 결과: {len(filtered)}건 "
-        f"(업무구분: {', '.join(config.ALLOWED_TASK_TYPES)} / "
-        f"키워드: {', '.join(config.KEYWORDS)})"
+        f"(A: 업무구분({', '.join(config.ALLOWED_TASK_TYPES)}) + "
+        f"키워드({', '.join(config.KEYWORDS)}) | "
+        f"B: 태블릿({', '.join(config.TABLET_KEYWORDS)}))"
     )
 
     if not filtered:
