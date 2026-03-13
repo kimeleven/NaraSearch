@@ -111,9 +111,9 @@ class BizInfoClient:
         resp.raise_for_status()
         return resp.json().get("jsonArray", [])
 
-    def fetch_yesterday(self, date_str: str) -> list:
-        """date_str: YYYYMMDD 형식. creatPnttm 기준으로 해당 날짜 공고만 수집."""
-        display_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
+    def fetch_recent(self, days: int = 7) -> list:
+        """최근 days일 이내 등록된 공고 수집 (creatPnttm 기준)."""
+        cutoff = (datetime.date.today() - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
         result = []
         page = 1
         while True:
@@ -124,9 +124,9 @@ class BizInfoClient:
             found_older = False
             for item in items:
                 created = item.get("creatPnttm", "")
-                if created.startswith(display_date):
+                if created and created[:10] >= cutoff:
                     result.append(item)
-                elif created and created < display_date:
+                elif created and created[:10] < cutoff:
                     found_older = True
                     break
             if found_older or len(items) < config.BIZINFO_ROWS_PER_PAGE:
@@ -243,7 +243,7 @@ def send_email(excel_path: str, date_str: str, nara_count: int, bizinfo_count: i
         f"■ 나라장터 입찰공고: {nara_count}건\n"
         f"  - 업무구분: {', '.join(config.ALLOWED_TASK_TYPES)}\n"
         f"  - 키워드: {', '.join(config.KEYWORDS + config.TABLET_KEYWORDS)}\n\n"
-        f"■ 기업마당 정부지원사업: {bizinfo_count}건 (전일 신규 공고 전체)\n\n"
+        f"■ 기업마당 정부지원사업: {bizinfo_count}건 (최근 7일 신규 공고 전체)\n\n"
         "첨부 엑셀 파일을 확인해 주세요."
     )
 
@@ -301,11 +301,11 @@ def main():
     )
 
     # ── 기업마당 수집 ──────────────────────────────────────────────
-    print(f"\n[기업마당] {display_date} 정부지원사업 공고를 조회합니다...")
+    print(f"\n[기업마당] 최근 7일 정부지원사업 공고를 조회합니다...")
     bizinfo_client = BizInfoClient(config.get_bizinfo_api_key())
     try:
-        raw_bizinfo = bizinfo_client.fetch_yesterday(date_str)
-        print(f"[기업마당] {len(raw_bizinfo)}건 조회됨")
+        raw_bizinfo = bizinfo_client.fetch_recent(days=7)
+        print(f"[기업마당] {len(raw_bizinfo)}건 조회됨 (최근 7일)")
     except Exception as e:
         print(f"[기업마당 오류] {e}")
         raw_bizinfo = []
