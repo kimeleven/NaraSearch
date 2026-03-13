@@ -41,3 +41,22 @@ def get_api_key() -> str:
             "API 키 발급: https://www.data.go.kr/data/15129394/openapi.do"
         )
     return key
+
+
+# ── 기업마당 (bizinfo) API 설정 ────────────────────────────────
+BIZINFO_API_URL = "https://www.bizinfo.go.kr/uss/rss/bizinfoApi.do"
+BIZINFO_ROWS_PER_PAGE = 100
+
+BIZINFO_EXCEL_COLUMNS = {
+    "pblancNm":                   "공고명",
+    "jrsdInsttNm":                "주관기관",
+    "excInsttNm":                 "운영기관",
+    "pldirSportRealmLclasCodeNm": "분야",
+    "reqstBeginEndDe":            "신청기간",
+    "rceptEngnHmpgUrl":           "홈페이지URL",
+    "creatPnttm":                 "등록일시",
+}
+
+
+def get_bizinfo_api_key() -> str:
+    return os.getenv("BIZINFO_API_KEY", "AbiQPw")

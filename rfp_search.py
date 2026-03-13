@@ -90,6 +90,52 @@ class BidSearchClient:
         return all_items
 
 
+class BizInfoClient:
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.session = requests.Session()
+        self.session.headers.update({"User-Agent": "Mozilla/5.0"})
+
+    def fetch_page(self, page_no: int) -> list:
+        params = {
+            "crtfcKey": self.api_key,
+            "dataType": "json",
+            "pageUnit": config.BIZINFO_ROWS_PER_PAGE,
+            "pageIndex": page_no,
+        }
+        resp = self.session.get(
+            config.BIZINFO_API_URL,
+            params=params,
+            timeout=config.REQUEST_TIMEOUT_SECONDS,
+        )
+        resp.raise_for_status()
+        return resp.json().get("jsonArray", [])
+
+    def fetch_yesterday(self, date_str: str) -> list:
+        """date_str: YYYYMMDD 형식. creatPnttm 기준으로 해당 날짜 공고만 수집."""
+        display_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
+        result = []
+        page = 1
+        while True:
+            print(f"  [기업마당] 페이지 {page} 조회 중...", end="\r")
+            items = self.fetch_page(page)
+            if not items:
+                break
+            found_older = False
+            for item in items:
+                created = item.get("creatPnttm", "")
+                if created.startswith(display_date):
+                    result.append(item)
+                elif created and created < display_date:
+                    found_older = True
+                    break
+            if found_older or len(items) < config.BIZINFO_ROWS_PER_PAGE:
+                break
+            page += 1
+        print()
+        return result
+
+
 def filter_records(records: list) -> list:
     seen = set()
     result = []
@@ -108,6 +154,28 @@ def filter_records(records: list) -> list:
     return result
 
 
+def filter_bizinfo_records(records: list) -> list:
+    seen = set()
+    result = []
+    all_keywords = config.KEYWORDS + config.TABLET_KEYWORDS
+    for r in records:
+        name = r.get("pblancNm", "")
+        pblanc_id = r.get("pblancId", id(r))
+        if any(kw.lower() in name.lower() for kw in all_keywords) and pblanc_id not in seen:
+            seen.add(pblanc_id)
+            result.append(r)
+    return result
+
+
+def build_bizinfo_dataframe(records: list) -> pd.DataFrame:
+    rows = [{field: r.get(field, "") for field in config.BIZINFO_EXCEL_COLUMNS} for r in records]
+    df = pd.DataFrame(rows, columns=list(config.BIZINFO_EXCEL_COLUMNS.keys()))
+    df.rename(columns=config.BIZINFO_EXCEL_COLUMNS, inplace=True)
+    df.sort_values("등록일시", ascending=True, inplace=True)
+    df.reset_index(drop=True, inplace=True)
+    return df
+
+
 def build_dataframe(records: list) -> pd.DataFrame:
     rows = []
     for r in records:
@@ -121,44 +189,41 @@ def build_dataframe(records: list) -> pd.DataFrame:
     return df
 
 
-def export_to_excel(df: pd.DataFrame, date_str: str) -> str:
+def _style_sheet(ws) -> None:
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(fill_type="solid", fgColor="2F5496")
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+    ws.row_dimensions[1].height = 22
+    ws.freeze_panes = "A2"
+    for col_idx, col_cells in enumerate(ws.columns, start=1):
+        col_letter = get_column_letter(col_idx)
+        max_len = max(
+            (sum(2 if ord(c) > 127 else 1 for c in str(cell.value)) for cell in col_cells if cell.value),
+            default=10,
+        )
+        ws.column_dimensions[col_letter].width = min(max_len + 2, 60)
+
+
+def export_to_excel(df: pd.DataFrame, date_str: str, bizinfo_df: pd.DataFrame = None) -> str:
     display_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
     filename = f"입찰공고_{display_date}.xlsx"
 
     with pd.ExcelWriter(filename, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="입찰공고")
+        df.to_excel(writer, index=False, sheet_name="나라장터")
+        _style_sheet(writer.sheets["나라장터"])
 
-        ws = writer.sheets["입찰공고"]
-
-        # 헤더 스타일
-        header_font = Font(bold=True, color="FFFFFF")
-        header_fill = PatternFill(fill_type="solid", fgColor="2F5496")
-        header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
-
-        for cell in ws[1]:
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = header_align
-
-        ws.row_dimensions[1].height = 22
-        ws.freeze_panes = "A2"
-
-        # 열 너비 자동 조정
-        for col_idx, col_cells in enumerate(ws.columns, start=1):
-            col_letter = get_column_letter(col_idx)
-            max_len = 0
-            for cell in col_cells:
-                if cell.value:
-                    # 한글은 2바이트 너비로 계산
-                    text = str(cell.value)
-                    length = sum(2 if ord(c) > 127 else 1 for c in text)
-                    max_len = max(max_len, length)
-            ws.column_dimensions[col_letter].width = min(max_len + 2, 60)
+        if bizinfo_df is not None and not bizinfo_df.empty:
+            bizinfo_df.to_excel(writer, index=False, sheet_name="정부지원사업")
+            _style_sheet(writer.sheets["정부지원사업"])
 
     return filename
 
 
-def send_email(excel_path: str, date_str: str, count: int) -> None:
+def send_email(excel_path: str, date_str: str, nara_count: int, bizinfo_count: int = 0) -> None:
     sender = os.environ.get("EMAIL_FROM", "")
     recipients_raw = os.environ.get("EMAIL_TO", "")
     password = os.environ.get("EMAIL_PASSWORD", "")
@@ -171,13 +236,14 @@ def send_email(excel_path: str, date_str: str, count: int) -> None:
     recipients = [r.strip() for r in recipients_raw.split(",") if r.strip()]
 
     display_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
-    subject = f"[나라장터] {display_date} 입찰공고 {count}건"
+    subject = f"[공고검색] {display_date} 나라장터 {nara_count}건 / 기업마당 {bizinfo_count}건"
 
     body = (
-        f"{display_date} 입찰공고 검색 결과입니다.\n\n"
-        f"- 업무구분: {', '.join(config.ALLOWED_TASK_TYPES)}\n"
-        f"- 키워드: {', '.join(config.KEYWORDS)}\n"
-        f"- 총 {count}건\n\n"
+        f"{display_date} 공고 검색 결과입니다.\n\n"
+        f"■ 나라장터 입찰공고: {nara_count}건\n"
+        f"  - 업무구분: {', '.join(config.ALLOWED_TASK_TYPES)}\n"
+        f"  - 키워드: {', '.join(config.KEYWORDS + config.TABLET_KEYWORDS)}\n\n"
+        f"■ 기업마당 정부지원사업: {bizinfo_count}건 (전일 신규 공고 전체)\n\n"
         "첨부 엑셀 파일을 확인해 주세요."
     )
 
@@ -234,15 +300,28 @@ def main():
         f"B: 태블릿({', '.join(config.TABLET_KEYWORDS)}))"
     )
 
-    if not filtered:
+    # ── 기업마당 수집 ──────────────────────────────────────────────
+    print(f"\n[기업마당] {display_date} 정부지원사업 공고를 조회합니다...")
+    bizinfo_client = BizInfoClient(config.get_bizinfo_api_key())
+    try:
+        raw_bizinfo = bizinfo_client.fetch_yesterday(date_str)
+        print(f"[기업마당] {len(raw_bizinfo)}건 조회됨")
+    except Exception as e:
+        print(f"[기업마당 오류] {e}")
+        raw_bizinfo = []
+
+    bizinfo_df = build_bizinfo_dataframe(raw_bizinfo) if raw_bizinfo else pd.DataFrame()
+
+    # ── 저장 및 발송 ───────────────────────────────────────────────
+    if not filtered and bizinfo_df.empty:
         print("조건에 맞는 공고가 없습니다.")
         return
 
-    df = build_dataframe(filtered)
-    output_path = export_to_excel(df, date_str)
-    print(f"저장 완료: {output_path}  ({len(df)}건)")
+    df = build_dataframe(filtered) if filtered else pd.DataFrame()
+    output_path = export_to_excel(df, date_str, bizinfo_df if not bizinfo_df.empty else None)
+    print(f"저장 완료: {output_path}  (나라장터 {len(df)}건 / 기업마당 {len(bizinfo_df)}건)")
 
-    send_email(output_path, date_str, len(df))
+    send_email(output_path, date_str, len(df), len(bizinfo_df))
 
 
 if __name__ == "__main__":

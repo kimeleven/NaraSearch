@@ -25,6 +25,7 @@ jobs:
       - name: 입찰공고 검색 실행
         env:
           NARA_API_KEY: ${{ secrets.NARA_API_KEY }}
+          BIZINFO_API_KEY: ${{ secrets.BIZINFO_API_KEY }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
