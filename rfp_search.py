@@ -154,18 +154,6 @@ def filter_records(records: list) -> list:
     return result
 
 
-def filter_bizinfo_records(records: list) -> list:
-    seen = set()
-    result = []
-    all_keywords = config.KEYWORDS + config.TABLET_KEYWORDS
-    for r in records:
-        name = r.get("pblancNm", "")
-        pblanc_id = r.get("pblancId", id(r))
-        if any(kw.lower() in name.lower() for kw in all_keywords) and pblanc_id not in seen:
-            seen.add(pblanc_id)
-            result.append(r)
-    return result
-
 
 def build_bizinfo_dataframe(records: list) -> pd.DataFrame:
     rows = [{field: r.get(field, "") for field in config.BIZINFO_EXCEL_COLUMNS} for r in records]
