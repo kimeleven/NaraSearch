@@ -109,7 +109,11 @@ class BizInfoClient:
             timeout=config.REQUEST_TIMEOUT_SECONDS,
         )
         resp.raise_for_status()
-        return resp.json().get("jsonArray", [])
+        data = resp.json()
+        items = data.get("jsonArray", [])
+        if not items:
+            print(f"  [기업마당 경고] jsonArray 없음 또는 빈 응답. 응답 키: {list(data.keys())}, 내용 앞부분: {str(data)[:200]}")
+        return items
 
     def fetch_recent(self, days: int = 7) -> list:
         """최근 days일 이내 등록된 공고 수집 (creatPnttm 기준)."""
