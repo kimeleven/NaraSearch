@@ -152,7 +152,7 @@ def filter_records(records: list) -> list:
                    and any(kw in name for kw in config.KEYWORDS))
         match_b = any(kw.lower() in name.lower() for kw in config.TABLET_KEYWORDS)
 
-        if (match_a or match_b) and bid_no not in seen:
+        if (match_a or match_b) and bid_no not in seen and "대행용역" not in name:
             seen.add(bid_no)
             result.append(r)
     return result
