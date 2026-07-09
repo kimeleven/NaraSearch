@@ -169,12 +169,31 @@ def build_bizinfo_dataframe(records: list) -> pd.DataFrame:
     return df
 
 
+def _split_sucsfbid_method(value) -> tuple:
+    """API sucsfbidMthdNm is often '낙찰방법-세부기준' (e.g. 협상에의한계약-협상에 의한 낙찰자 결정)."""
+    text = ("" if value is None else str(value)).strip()
+    if not text:
+        return "", ""
+    if "-" in text:
+        method, detail = text.split("-", 1)
+        return method.strip(), detail.strip()
+    return text, text
+
+
 def build_dataframe(records: list) -> pd.DataFrame:
     """EXCEL_COLUMNS: list of (api_field, korean_header). Same field may map to multiple headers."""
     headers = [header for _, header in config.EXCEL_COLUMNS]
     rows = []
     for r in records:
-        row = [r.get(field, "") for field, _ in config.EXCEL_COLUMNS]
+        method, detail = _split_sucsfbid_method(r.get("sucsfbidMthdNm", ""))
+        row = []
+        for field, header in config.EXCEL_COLUMNS:
+            if header == "낙찰방법":
+                row.append(method)
+            elif header == "낙찰방법세부기준":
+                row.append(detail)
+            else:
+                row.append(r.get(field, ""))
         rows.append(row)
 
     df = pd.DataFrame(rows, columns=headers)
