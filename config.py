@@ -18,18 +18,25 @@ KEYWORDS = ["플랫폼", "시스템", "앱", "위험성", "안전", "서비스"]
 TABLET_KEYWORDS = ["태블릿", "타블릿", "tablet", "테블렛", "타블렛"]
 
 # ── 엑셀 컬럼 매핑 (API 필드명 → 한국어 헤더) ─────────────────
-EXCEL_COLUMNS = {
-    "bidNtceNo":    "공고번호",
-    "bidNtceNm":    "공고명",
-    "ntceInsttNm":  "공고기관",
-    "dminsttNm":    "수요기관",
-    "srvceDivNm":   "업무구분",
-    "bidNtceDt":    "공고일시",
-    "bidClseDt":    "입찰마감일시",
-    "asignBdgtAmt": "배정예산액",
-    "presmptPrce":  "추정가격",
-    "bidNtceUrl":   "공고URL",
-}
+# 순서를 유지하기 위해 리스트 사용. 동일 API 필드를 여러 컬럼에 쓸 수 있음.
+# sucsfbidMthdNm: 문서상 "낙찰방법명"이며 설명은 "낙찰방법 세부기준"
+#   (예: "협상에의한계약", "적격심사제-추정가격 2억원 미만인 용역")
+EXCEL_COLUMNS = [
+    ("bidNtceNo",       "공고번호"),
+    ("bidNtceNm",       "공고명"),
+    ("ntceInsttNm",     "공고기관"),
+    ("dminsttNm",       "수요기관"),
+    ("srvceDivNm",      "업무구분"),
+    ("bidMethdNm",      "입찰방식"),
+    ("sucsfbidMthdNm",  "낙찰방법"),
+    ("sucsfbidMthdNm",  "낙찰방법세부기준"),
+    ("bidNtceDt",       "공고일시"),
+    ("bidClseDt",       "입찰마감일시"),
+    ("asignBdgtAmt",    "배정예산액"),
+    ("presmptPrce",     "추정가격"),
+    ("sucsfbidLwltRate", "낙찰하한가율"),
+    ("bidNtceUrl",      "공고URL"),
+]
 
 
 def get_api_key() -> str:

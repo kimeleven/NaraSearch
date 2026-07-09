@@ -170,13 +170,14 @@ def build_bizinfo_dataframe(records: list) -> pd.DataFrame:
 
 
 def build_dataframe(records: list) -> pd.DataFrame:
+    """EXCEL_COLUMNS: list of (api_field, korean_header). Same field may map to multiple headers."""
+    headers = [header for _, header in config.EXCEL_COLUMNS]
     rows = []
     for r in records:
-        row = {field: r.get(field, "") for field in config.EXCEL_COLUMNS}
+        row = [r.get(field, "") for field, _ in config.EXCEL_COLUMNS]
         rows.append(row)
 
-    df = pd.DataFrame(rows, columns=list(config.EXCEL_COLUMNS.keys()))
-    df.rename(columns=config.EXCEL_COLUMNS, inplace=True)
+    df = pd.DataFrame(rows, columns=headers)
     df.sort_values("공고일시", ascending=True, inplace=True)
     df.reset_index(drop=True, inplace=True)
     return df
