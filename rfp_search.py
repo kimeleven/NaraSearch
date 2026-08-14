@@ -173,7 +173,7 @@ def filter_records(records: list) -> list:
                    and any(kw in name for kw in config.KEYWORDS))
         match_b = any(kw.lower() in name.lower() for kw in config.TABLET_KEYWORDS)
 
-        exclude = any(kw in name for kw in ["대행", "감리", "연구용역"])
+        exclude = any(kw in name for kw in config.EXCLUDE_KEYWORDS)
         if (match_a or match_b) and bid_no not in seen and not exclude:
             seen.add(bid_no)
             result.append(r)
@@ -276,7 +276,8 @@ def send_email(excel_path: str, date_str: str, nara_count: int, bizinfo_count: i
         f"{display_date} 공고 검색 결과입니다.\n\n"
         f"■ 나라장터 입찰공고: {nara_count}건\n"
         f"  - 업무구분: {', '.join(config.ALLOWED_TASK_TYPES)}\n"
-        f"  - 키워드: {', '.join(config.KEYWORDS + config.TABLET_KEYWORDS)}\n\n"
+        f"  - 키워드: {', '.join(config.KEYWORDS + config.TABLET_KEYWORDS)}\n"
+        f"  - 제외: {', '.join(config.EXCLUDE_KEYWORDS)}\n\n"
         f"■ 기업마당 정부지원사업: {bizinfo_count}건 (최근 1일 신규 공고 전체)\n\n"
         "첨부 엑셀 파일을 확인해 주세요."
     )
@@ -331,7 +332,8 @@ def main():
         f"필터링 결과: {len(filtered)}건 "
         f"(A: 업무구분({', '.join(config.ALLOWED_TASK_TYPES)}) + "
         f"키워드({', '.join(config.KEYWORDS)}) | "
-        f"B: 태블릿({', '.join(config.TABLET_KEYWORDS)}))"
+        f"B: 태블릿({', '.join(config.TABLET_KEYWORDS)}) | "
+        f"제외({', '.join(config.EXCLUDE_KEYWORDS)}))"
     )
 
     # ── 기업마당 수집 ──────────────────────────────────────────────
