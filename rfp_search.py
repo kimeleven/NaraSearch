@@ -2,6 +2,7 @@ import datetime
 import os
 import smtplib
 import sys
+import time
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -12,6 +13,47 @@ from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
 import config
+
+
+class TransientRequestError(Exception):
+    """Retryable HTTP / parse failure (timeout, 5xx, non-JSON gateway page)."""
+
+
+def _get_json(session: requests.Session, url: str, params: dict):
+    """GET JSON with retries for the public-data portal's intermittent outages."""
+    retries = config.API_MAX_RETRIES
+    backoff = config.API_RETRY_BACKOFF_SECONDS
+    last_error = None
+
+    for attempt in range(1, retries + 1):
+        try:
+            resp = session.get(
+                url,
+                params=params,
+                timeout=config.REQUEST_TIMEOUT_SECONDS,
+            )
+            if resp.status_code in {429, 500, 502, 503, 504}:
+                raise TransientRequestError(f"HTTP {resp.status_code}")
+            resp.raise_for_status()
+
+            content_type = resp.headers.get("Content-Type", "")
+            if "json" not in content_type.lower():
+                raise TransientRequestError(
+                    f"JSON 응답이 아닙니다. Content-Type: {content_type}"
+                )
+            return resp.json()
+        except (requests.Timeout, requests.ConnectionError, TransientRequestError) as e:
+            last_error = e
+            if attempt >= retries:
+                raise
+            wait = backoff * (2 ** (attempt - 1))
+            print(
+                f"  요청 실패: {e}. {wait}초 후 재시도 ({attempt}/{retries})...",
+                flush=True,
+            )
+            time.sleep(wait)
+
+    raise last_error
 
 
 class BidSearchClient:
@@ -34,22 +76,7 @@ class BidSearchClient:
 
     def fetch_page(self, date_str: str, page_no: int) -> list:
         params = self._build_params(date_str, page_no)
-        resp = self.session.get(
-            self.base_url,
-            params=params,
-            timeout=config.REQUEST_TIMEOUT_SECONDS,
-        )
-        resp.raise_for_status()
-
-        content_type = resp.headers.get("Content-Type", "")
-        if "json" not in content_type:
-            raise ValueError(
-                f"JSON 응답이 아닙니다. API 키를 확인하세요.\n"
-                f"Content-Type: {content_type}\n"
-                f"응답 내용(앞 300자): {resp.text[:300]}"
-            )
-
-        data = resp.json()
+        data = _get_json(self.session, self.base_url, params)
         header = data.get("response", {}).get("header", {})
         result_code = header.get("resultCode", "")
         if result_code != "00":
@@ -103,13 +130,7 @@ class BizInfoClient:
             "pageUnit": config.BIZINFO_ROWS_PER_PAGE,
             "pageIndex": page_no,
         }
-        resp = self.session.get(
-            config.BIZINFO_API_URL,
-            params=params,
-            timeout=config.REQUEST_TIMEOUT_SECONDS,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        data = _get_json(self.session, config.BIZINFO_API_URL, params)
         items = data.get("jsonArray", [])
         if not items:
             print(f"  [기업마당 경고] jsonArray 없음 또는 빈 응답. 응답 키: {list(data.keys())}, 내용 앞부분: {str(data)[:200]}")
@@ -296,7 +317,7 @@ def main():
 
     try:
         raw_records = client.fetch_all(date_str)
-    except (requests.HTTPError, requests.Timeout, requests.ConnectionError) as e:
+    except (requests.HTTPError, requests.Timeout, requests.ConnectionError, TransientRequestError) as e:
         print(f"[오류] API 호출 실패: {e}")
         sys.exit(1)
     except (ValueError, RuntimeError) as e:

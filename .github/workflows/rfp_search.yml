@@ -9,13 +9,14 @@ on:
 jobs:
   search:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: 코드 체크아웃
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Python 설정
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -32,9 +33,10 @@ jobs:
         run: python rfp_search.py
 
       - name: 엑셀 파일 아티팩트 저장 (30일 보관)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: 입찰공고-${{ github.run_id }}
           path: "입찰공고_*.xlsx"
           retention-days: 30
+          if-no-files-found: ignore
         if: always()
