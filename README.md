@@ -12,7 +12,8 @@
 - **엑셀 출력**: 날짜별 파일명으로 결과 저장 (예: `입찰공고_2026-03-09.xlsx`)
 - **이메일 발송**: Gmail SMTP로 결과 엑셀 첨부 자동 발송
 - **클라우드 자동 실행**: GitHub Actions로 매일 오전 9시(KST) 무인 실행
-- **재시도**: 공공데이터포털 연결 실패(타임아웃·5xx) 시 15/30/60초 간격으로 최대 4회 재시도
+- **재시도**: 공공데이터포털 연결 실패(타임아웃·5xx) 시 15/30초(이후 30초 고정) 간격으로 최대 100회 재시도
+- **기간 지정 수동 실행**: Actions 수동 실행 시 시작일/종료일을 입력하면 놓친 기간을 몰아서 조회 후 한 번에 발송
 
 ## 출력 엑셀 컬럼
 
@@ -100,7 +101,9 @@ GitHub 저장소 → **Settings** → **Secrets and variables** → **Actions** 
 ### 4. 장애 대응
 
 공공데이터포털(`apis.data.go.kr`)이 간헐적으로 연결 타임아웃을 내면 검색이 실패하고 엑셀·메일이 빠질 수 있습니다.  
-`config.py`의 `API_MAX_RETRIES`(기본 4회), `API_RETRY_BACKOFF_SECONDS`(기본 15초, 이후 2배)로 재시도합니다.
+`config.py`의 `API_MAX_RETRIES`(기본 100회), `API_RETRY_BACKOFF_SECONDS`(기본 15초, 이후 2배)를 `API_RETRY_BACKOFF_MAX_SECONDS`(30초)로 캡을 씌워 재시도합니다.
+
+그래도 특정 날짜의 발송이 누락된 경우, Actions 탭에서 `나라장터 입찰공고 검색` 워크플로를 "Run workflow"로 수동 실행하면서 `start_date`/`end_date`(YYYYMMDD)를 입력하면 해당 기간 전체를 한 번에 조회해 이메일로 보내줍니다.
 
 ## 파일 구조
 

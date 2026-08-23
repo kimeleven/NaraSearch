@@ -4,12 +4,20 @@ on:
   schedule:
     # 매일 오전 9시 KST (= UTC 00:00)
     - cron: "0 0 * * *"
-  workflow_dispatch:  # 수동 실행 버튼
+  workflow_dispatch:  # 수동 실행 버튼 (놓친 기간을 몰아서 조회할 때 시작일/종료일 입력)
+    inputs:
+      start_date:
+        description: "조회 시작일 (YYYYMMDD, 비워두면 어제 하루만 조회)"
+        required: false
+      end_date:
+        description: "조회 종료일 (YYYYMMDD, start_date와 함께 입력)"
+        required: false
 
 jobs:
   search:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 공공데이터포털 타임아웃 시 최대 100회 재시도하므로 넉넉하게 잡음
+    timeout-minutes: 150
 
     steps:
       - name: 코드 체크아웃
@@ -30,6 +38,8 @@ jobs:
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          SEARCH_START_DATE: ${{ inputs.start_date }}
+          SEARCH_END_DATE: ${{ inputs.end_date }}
         run: python rfp_search.py
 
       - name: 엑셀 파일 아티팩트 저장 (30일 보관)

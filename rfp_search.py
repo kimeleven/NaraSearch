@@ -46,7 +46,7 @@ def _get_json(session: requests.Session, url: str, params: dict):
             last_error = e
             if attempt >= retries:
                 raise
-            wait = backoff * (2 ** (attempt - 1))
+            wait = min(backoff * (2 ** (attempt - 1)), config.API_RETRY_BACKOFF_MAX_SECONDS)
             print(
                 f"  요청 실패: {e}. {wait}초 후 재시도 ({attempt}/{retries})...",
                 flush=True,
@@ -242,8 +242,7 @@ def _style_sheet(ws) -> None:
         ws.column_dimensions[col_letter].width = min(max_len + 2, 60)
 
 
-def export_to_excel(df: pd.DataFrame, date_str: str, bizinfo_df: pd.DataFrame = None) -> str:
-    display_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
+def export_to_excel(df: pd.DataFrame, display_date: str, bizinfo_df: pd.DataFrame = None) -> str:
     filename = f"입찰공고_{display_date}.xlsx"
 
     with pd.ExcelWriter(filename, engine="openpyxl") as writer:
@@ -257,7 +256,7 @@ def export_to_excel(df: pd.DataFrame, date_str: str, bizinfo_df: pd.DataFrame = 
     return filename
 
 
-def send_email(excel_path: str, date_str: str, nara_count: int, bizinfo_count: int = 0) -> None:
+def send_email(excel_path: str, display_date: str, nara_count: int, bizinfo_count: int = 0, bizinfo_lookback_days: int = 1) -> None:
     sender = os.environ.get("EMAIL_FROM", "")
     recipients_raw = os.environ.get("EMAIL_TO", "")
     password = os.environ.get("EMAIL_PASSWORD", "")
@@ -269,7 +268,6 @@ def send_email(excel_path: str, date_str: str, nara_count: int, bizinfo_count: i
     # 쉼표로 구분된 여러 수신자 지원
     recipients = [r.strip() for r in recipients_raw.split(",") if r.strip()]
 
-    display_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
     subject = f"[공고검색] {display_date} 나라장터 {nara_count}건 / 기업마당 {bizinfo_count}건"
 
     body = (
@@ -278,7 +276,7 @@ def send_email(excel_path: str, date_str: str, nara_count: int, bizinfo_count: i
         f"  - 업무구분: {', '.join(config.ALLOWED_TASK_TYPES)}\n"
         f"  - 키워드: {', '.join(config.KEYWORDS + config.TABLET_KEYWORDS)}\n"
         f"  - 제외: {', '.join(config.EXCLUDE_KEYWORDS)}\n\n"
-        f"■ 기업마당 정부지원사업: {bizinfo_count}건 (최근 1일 신규 공고 전체)\n\n"
+        f"■ 기업마당 정부지원사업: {bizinfo_count}건 (최근 {bizinfo_lookback_days}일 신규 공고 전체)\n\n"
         "첨부 엑셀 파일을 확인해 주세요."
     )
 
@@ -302,10 +300,27 @@ def send_email(excel_path: str, date_str: str, nara_count: int, bizinfo_count: i
     print(f"이메일 발송 완료 → {', '.join(recipients)}")
 
 
-def main():
+def _parse_search_range() -> tuple:
+    """SEARCH_START_DATE/SEARCH_END_DATE(YYYYMMDD)가 설정되어 있으면 해당 구간을,
+    아니면 어제 하루를 조회 대상으로 삼는다. 놓친 날짜를 나중에 몰아서 조회할 때 사용."""
+    start_raw = os.environ.get("SEARCH_START_DATE", "").strip()
+    end_raw = os.environ.get("SEARCH_END_DATE", "").strip()
+    if start_raw and end_raw:
+        start = datetime.datetime.strptime(start_raw, "%Y%m%d").date()
+        end = datetime.datetime.strptime(end_raw, "%Y%m%d").date()
+        if start > end:
+            start, end = end, start
+        return start, end
     yesterday = datetime.date.today() - datetime.timedelta(days=1)
-    date_str = yesterday.strftime("%Y%m%d")
-    display_date = yesterday.strftime("%Y-%m-%d")
+    return yesterday, yesterday
+
+
+def main():
+    start_date, end_date = _parse_search_range()
+    if start_date == end_date:
+        display_date = start_date.strftime("%Y-%m-%d")
+    else:
+        display_date = f"{start_date.strftime('%Y-%m-%d')}~{end_date.strftime('%Y-%m-%d')}"
 
     try:
         api_key = config.get_api_key()
@@ -313,11 +328,15 @@ def main():
         print(f"[오류] {e}")
         sys.exit(1)
 
-    print(f"날짜 {display_date} 의 입찰공고를 조회합니다...")
     client = BidSearchClient(api_key)
-
+    raw_records = []
+    day_count = (end_date - start_date).days + 1
     try:
-        raw_records = client.fetch_all(date_str)
+        for i in range(day_count):
+            day = start_date + datetime.timedelta(days=i)
+            day_str = day.strftime("%Y%m%d")
+            print(f"날짜 {day.strftime('%Y-%m-%d')} 의 입찰공고를 조회합니다...")
+            raw_records.extend(client.fetch_all(day_str))
     except (requests.HTTPError, requests.Timeout, requests.ConnectionError, TransientRequestError) as e:
         print(f"[오류] API 호출 실패: {e}")
         sys.exit(1)
@@ -337,11 +356,12 @@ def main():
     )
 
     # ── 기업마당 수집 ──────────────────────────────────────────────
-    print(f"\n[기업마당] 최근 1일 정부지원사업 공고를 조회합니다...")
+    bizinfo_lookback_days = max((datetime.date.today() - start_date).days, 1)
+    print(f"\n[기업마당] 최근 {bizinfo_lookback_days}일 정부지원사업 공고를 조회합니다...")
     bizinfo_client = BizInfoClient(config.get_bizinfo_api_key())
     try:
-        raw_bizinfo = bizinfo_client.fetch_recent(days=1)
-        print(f"[기업마당] {len(raw_bizinfo)}건 조회됨 (최근 1일)")
+        raw_bizinfo = bizinfo_client.fetch_recent(days=bizinfo_lookback_days)
+        print(f"[기업마당] {len(raw_bizinfo)}건 조회됨 (최근 {bizinfo_lookback_days}일)")
     except Exception as e:
         print(f"[기업마당 오류] {e}")
         raw_bizinfo = []
@@ -354,10 +374,10 @@ def main():
         return
 
     df = build_dataframe(filtered) if filtered else pd.DataFrame()
-    output_path = export_to_excel(df, date_str, bizinfo_df if not bizinfo_df.empty else None)
+    output_path = export_to_excel(df, display_date, bizinfo_df if not bizinfo_df.empty else None)
     print(f"저장 완료: {output_path}  (나라장터 {len(df)}건 / 기업마당 {len(bizinfo_df)}건)")
 
-    send_email(output_path, date_str, len(df), len(bizinfo_df))
+    send_email(output_path, display_date, len(df), len(bizinfo_df), bizinfo_lookback_days)
 
 
 if __name__ == "__main__":

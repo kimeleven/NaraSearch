@@ -10,8 +10,9 @@ API_BASE_URL = (
 )
 ROWS_PER_PAGE = 999
 REQUEST_TIMEOUT_SECONDS = 45
-API_MAX_RETRIES = 4
+API_MAX_RETRIES = 100
 API_RETRY_BACKOFF_SECONDS = 15
+API_RETRY_BACKOFF_MAX_SECONDS = 30
 
 # ── 필터 설정 ─────────────────────────────────────────────────
 ALLOWED_TASK_TYPES = {"일반용역", "민간일반용역"}
