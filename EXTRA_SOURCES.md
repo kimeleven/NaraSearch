@@ -60,3 +60,7 @@ Sheets: `나라장터`, `정부지원사업`, `K-Startup`, `과기정통부`
 
 ## 키 설정 (Hermes 등 다른 환경)
 `.env`에 `KSTARTUP_API_KEY`, `KSTARTUP_API_BASE`, `MSIT_API_KEY`, `MSIT_API_BASE`를 넣으면 JSON 파일 대신 환경변수를 사용. 또는 `NARA_SECRETS_DIR`로 JSON 폴더 지정. 키는 저장소에 커밋하지 말 것.
+
+## 해외 서버에서 실행할 때 (403·타임아웃)
+`apis.data.go.kr`, `bizinfo.go.kr`은 해외 IP에서 막히거나 끊길 수 있다. 메인 스크립트에서 다른 모듈보다 먼저 `import _allorigins_patch`를 하면 이 도메인 요청이 공개 중계(proxy.cors.dev, 실패 시 allorigins)를 거친다.
+주의: 이때 API 키가 제3자 중계 서버를 지나간다. 한국 IP에서 돌릴 수 있으면 쓰지 말 것.
